@@ -13,9 +13,7 @@ def generate_and_refine_repository(llm, semantic_model, output_dir, max_iters=3)
     for iteration in range(max_iters):
         print(f"\n=== Repository refinement iteration {iteration+1} ===")
         errors_found = False
-
         for module_name, module_path in (state.generated_modules.items()):
-
             print(f"\nChecking module: {module_name}")
 
             with open(module_path) as f:
@@ -43,15 +41,25 @@ def generate_and_refine_repository(llm, semantic_model, output_dir, max_iters=3)
             # =====================
             # SEMANTIC STAGE
             # =====================
-            semantic_result = check_semantics(node,code)
+            semantic_result = check_semantics(node, code)
+            semantic_errors = semantic_result.get("errors", [])
 
-            if not semantic_result["valid"]:
+            semantic_warnings = semantic_result.get("warnings", [])
+
+            # ---- WARNINGS ----
+            if semantic_warnings:
+                print("\n[SEMANTIC WARNINGS]")
+                for w in semantic_warnings:
+                    print("-", w)
+
+            # ---- ERRORS ----
+            if semantic_errors:
                 errors_found = True
                 print("\n[SEMANTIC ERRORS]")
-                for e in semantic_result["errors"]:
+                for e in semantic_errors:
                     print("-", e)
 
-                repaired_code = repair_code(llm, code, semantic_result["errors"])
+                repaired_code = repair_code(llm, code, semantic_errors)
 
                 with open(module_path, "w") as f:
                     f.write(repaired_code)
@@ -62,13 +70,11 @@ def generate_and_refine_repository(llm, semantic_model, output_dir, max_iters=3)
         # FINAL RESULT
         # =====================
         if not errors_found:
-            print(
-                "\n✅ Repository passed verification"
-            )
+            print("\n✅ Repository passed verification")
             try:
                 result = analyze_repository_generation(output_dir)
                 print("\nRepository Metrics:")
-                for k, v in result.get("metrics", {}).items():
+                for k, v in result.get("metrics",{}).items():
                     print(f"{k}: {v}")
 
             except Exception as e:

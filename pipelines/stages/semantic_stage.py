@@ -6,10 +6,14 @@ def check_semantics(node, code):
 
     summary = extract_semantic_summary(code)
 
-    errors = verify_module(node, summary)
+    result = verify_module(node, summary)
+    
+    errors = result["errors"]
+    warnings = result["warnings"]
 
     return {
         "valid": len(errors) == 0,
         "errors": errors,
-        "summary": summary,
+        "warnings": warnings,
+        "summary": summary
     }
