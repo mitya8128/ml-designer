@@ -2,6 +2,7 @@ import argparse
 import ast
 import re
 
+from architecture.compiler import compile_semantic_model
 from analyzer.main_pipeline import analyze_code
 from analyzer.parser import is_valid_python
 from analyzer.repo_analyzer import analyze_repository
@@ -10,13 +11,16 @@ from verifier.verifier import verify_architecture
 from llm.factory import get_llm
 from llm.services.code_generator import CodeGenerator
 from system_prompt import SYSTEM_PROMPT
+from pipelines.repo_pipeline import generate_and_refine_repository
 from prompts.rebuild_arch_prompts import build_repair_prompt
 from prompts.rebuild_code_generation_prompts import build_code_repair_prompt
 from utils.yaml_utils import extract_yaml, normalize_yaml
+from utils.code_utils import extract_code
 
 
 DEFAULT_ARCH_PATH = "sessions/architecture.yaml"
 DEFAULT_CODE_PATH = "sessions/generated_code.py"
+DEFAULT_REPO_DIR = "sessions/generated_repo"
 
 
 def flatten_errors(error_map):
@@ -31,21 +35,6 @@ def safe_normalize_yaml(text: str) -> str:
         return normalize_yaml(text)
     except Exception:
         return text
-
-
-# =========================
-# CODE EXTRACTION FROM LLM
-# =========================
-def extract_code(text: str) -> str:
-    fenced = re.findall(r"```python(.*?)```", text, re.DOTALL)
-    if fenced:
-        return fenced[0].strip()
-
-    fenced_any = re.findall(r"```(.*?)```", text, re.DOTALL)
-    if fenced_any:
-        return fenced_any[0].strip()
-
-    return text.strip()
 
 
 # =========================
@@ -284,6 +273,12 @@ def main():
 
     parser.add_argument("--max-attempts", type=int, default=6)
 
+    parser.add_argument("--mode", type=str, default="single", 
+                        choices=["single", "repository"], help="Generation mode")
+
+    parser.add_argument("--repo-dir", type=str, default=DEFAULT_REPO_DIR, 
+                        help="Output directory for repository generation")
+
     args = parser.parse_args()
 
     llm = get_llm(args.provider, args.model)
@@ -330,11 +325,43 @@ def main():
 
     # === code generation + refinement ===
     if not args.no_code:
-        generate_and_refine_code(llm, args.arch, args.code)
+        # =====================
+        # SINGLE FILE MODE
+        # =====================
+        if args.mode == "single":
+            print("\n=== SINGLE FILE MODE ===")
+            generate_and_refine_code(llm, args.arch, args.code)
+
+        # =====================
+        # REPOSITORY MODE
+        # =====================
+        elif args.mode == "repository":
+            print("\n=== REPOSITORY MODE ===")
+            semantic_model = compile_semantic_model(arch)
+
+            generate_and_refine_repository(llm, semantic_model, args.repo_dir)
 
     # === final analysis ===
     elif not args.no_analyze:
-        analyze_generated_code(args.arch, args.code)
+
+        # =====================
+        # SINGLE FILE ANALYSIS
+        # =====================
+        if args.mode == "single":
+            analyze_generated_code(args.arch, args.code)
+
+        # =====================
+        # REPOSITORY ANALYSIS
+        # =====================
+        elif args.mode == "repository":
+            result = analyze_repository(args.repo_dir)
+            print("\nErrors:")
+            for e in result["errors"]:
+                print("-", e)
+
+            print("\nMetrics:")
+            for k, v in result["metrics"].items():
+                print(f"{k}: {v}")
 
 
 if __name__ == "__main__":
