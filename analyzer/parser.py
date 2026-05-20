@@ -49,35 +49,39 @@ class CallVisitor(ast.NodeVisitor):
         return None
 
 
-def extract_functions(code):
+def extract_functions(code, path):
 
-    tree = ast.parse(code)
+    try:
+        tree = ast.parse(code)
+
+    except SyntaxError as e:
+
+        print(f"\n[SyntaxError] in file: {path}")
+        print(f"line {e.lineno}:{e.offset} -> {e.msg}")
+
+        if e.text:
+            print(e.text.rstrip())
+
+        raise
 
     functions = {}
 
     for node in ast.walk(tree):
-
         if isinstance(node, ast.FunctionDef):
-
             name = node.name
-
             input_type = None
             output_type = None
 
             if node.args.args:
-
                 arg = node.args.args[0]
-
                 if arg.annotation:
                     input_type = ast.unparse(arg.annotation)
 
             if node.returns:
                 output_type = ast.unparse(node.returns)
 
-            functions[name] = {
-                "input": input_type,
-                "output": output_type
-            }
+            functions[name] = {"input": input_type,
+                               "output": output_type}
 
     return functions
 

@@ -39,7 +39,7 @@ def parse_repository(files):
         except Exception:
             continue
 
-        functions = extract_functions(code)
+        functions = extract_functions(code, file_path)
         calls = extract_calls(code)
         imports = extract_imports(code)
 
